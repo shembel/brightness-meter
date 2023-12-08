@@ -1,5 +1,5 @@
 <script lang="ts">
-    import LightMeter from '../light-meter.svelte';
+    import LightMeter from '$lib/components/meter/light-meter.svelte';
 </script>
 
 <main>

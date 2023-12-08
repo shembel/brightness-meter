@@ -1,6 +1,6 @@
 <script>
-    export let size = 24
-    $: sizePx = `${size}px`
+    export let size = '24'
+    $: sizePx = size + 'px'
 </script>
 
 <svg style:width={sizePx} style:height={sizePx} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">

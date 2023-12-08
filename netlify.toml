@@ -1,0 +1,4 @@
+# commenting out because of multiple deploys
+#[build]
+#	command = "npm run build && npm run story:build"
+#	publish = "build"

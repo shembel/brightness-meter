@@ -3,6 +3,8 @@
     import { flip } from 'svelte/animate';
     import { quintOut } from 'svelte/easing';
 
+    import type { CameraData } from '$lib/types/CameraData';
+
     import MoonIcon from '$lib/components/icons/MoonIcon.svelte';
     import SunIcon from '$lib/components/icons/SunIcon.svelte';
 
@@ -16,7 +18,17 @@
 
     $: activeSegment = calculateSegment(value);
 
-    let video: HTMLVideoElement;
+    let video: CameraData['video'];
+
+    // just checking if the values comply with the HTML <meter>, should implement actual UX constraints
+    $: {
+        if(min > max){
+            console.error("'min' should always be less than 'max'");
+        }
+        if(optimum < min || optimum > max){
+            console.error("'optimum' should be between 'min' and 'max'");
+        }
+    }
 
 
     /**
@@ -28,7 +40,7 @@
      * @function
      * @returns {Promise<{video: HTMLVideoElement, canvas: HTMLCanvasElement, canvasContext: CanvasRenderingContext2D}>} Object containing the video element, canvas element and the canvas context.
      */
-    async function prepareCameraData() {
+    async function prepareCameraData(): Promise<CameraData> {
         const videoStreamPromise = navigator.mediaDevices.getUserMedia({ video: true });
 
         video = document.createElement('video');
@@ -48,7 +60,16 @@
             return;
         }
 
-        const { video, canvas, canvasContext } = await prepareCameraData();
+        let video: CameraData['video'];
+        let canvas: CameraData['canvas'];
+        let canvasContext: CameraData['canvasContext'];
+
+        try {
+            ({ video, canvas, canvasContext } = await prepareCameraData());
+        } catch (error) {
+            alert('Could not access camera. Please allow camera access and reload the page.');
+            return;
+        }
 
         /**
          * Analyzes the current video frame and updates the variable `value` to the average brightness of the frame.
@@ -114,7 +135,7 @@
     </span>
 </div>
 
-<style lang="postcss">
+<style lang="scss">
     .meter-container {
         width: 100%;
         max-width: 14.875rem;
@@ -176,6 +197,28 @@
                 &:not(.maximized ~ li) {
                     background-color: #FFFFFF;
                     box-shadow: 0px 0px 24px -2px #FFFFFF, 0px 0px 6px -1px #FFFFFF;
+                }
+            }
+        }
+    }
+
+    @media screen and (max-width: 320px) {
+        .meter-container {
+            max-width: 13.375rem;
+            min-height: 3.25rem;
+            gap: 1.5rem;
+
+            & .meter {
+                max-width: 6.375rem;
+
+                & .bar {
+                    min-height: 1.25rem;
+                    height: 100%;
+                    width: 0.375rem;
+
+                    &.maximized {
+                        height: 2.25rem;
+                    }
                 }
             }
         }
