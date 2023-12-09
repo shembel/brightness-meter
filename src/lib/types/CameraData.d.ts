@@ -1,5 +1,5 @@
 export type CameraData = {
-  video: HTMLVideoElement;
-  canvas: HTMLCanvasElement;
+  video: HTMLVideoElement | null;
+  canvas: HTMLCanvasElement | null;
   canvasContext: CanvasRenderingContext2D | null;
 };

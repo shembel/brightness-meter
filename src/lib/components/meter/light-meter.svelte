@@ -1,3 +1,7 @@
+<!-- NB: this is not a "dumb" component with all this camera handling logic. -->
+<!-- Proper next step is to move logic outside to utils/camera.ts for example -->
+<!-- And keep the component solelyl for UI representation -->
+
 <script lang="ts">
     import { onMount } from 'svelte';
     import { flip } from 'svelte/animate';
@@ -7,6 +11,7 @@
 
     import MoonIcon from '$lib/components/icons/MoonIcon.svelte';
     import SunIcon from '$lib/components/icons/SunIcon.svelte';
+    import EyeIcon from '$lib/components/icons/EyeIcon.svelte';
 
     // possible to omit min though because it defaults to 0
     // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meter#high_and_low_range_example
@@ -18,7 +23,30 @@
 
     $: activeSegment = calculateSegment(value);
 
+    let hasAcceptedCameraUse = false;
     let video: CameraData['video'];
+    let canvas: CameraData['canvas'];
+    let canvasContext: CameraData['canvasContext'];
+
+    /**
+     * Marks that the user has accepted camera use and proceeds with accessing the camera data.
+     * @function acceptCameraUse
+     * @returns {void}
+     */
+    function acceptCameraUse() {
+        hasAcceptedCameraUse = true;
+
+        prepareCameraData()
+            .then(({ video: videoEl, canvas: canvasEl, canvasContext: canvasContextEl }) => {
+                video = videoEl;
+                canvas = canvasEl;
+                canvasContext = canvasContextEl;
+                analyzeFrame();
+            })
+            .catch(() => {
+                alert('Could not access camera. Please allow camera access.');
+            });
+    }
 
     // just checking if the values comply with the HTML <meter>, should implement actual UX constraints
     $: {
@@ -40,72 +68,67 @@
      * @function
      * @returns {Promise<{video: HTMLVideoElement, canvas: HTMLCanvasElement, canvasContext: CanvasRenderingContext2D}>} Object containing the video element, canvas element and the canvas context.
      */
-    async function prepareCameraData(): Promise<CameraData> {
-        const videoStreamPromise = navigator.mediaDevices.getUserMedia({ video: true });
+    async function prepareCameraData(): Promise<CameraData>{
+        try {
+            const videoStreamPromise = navigator.mediaDevices.getUserMedia({ video: true });
 
-        video = document.createElement('video');
-        video.srcObject = await videoStreamPromise;
-        await video.play();
+            video = document.createElement('video');
+            video.srcObject = await videoStreamPromise;
+            await video.play();
 
-        const canvas = document.createElement('canvas');
+            const canvas = document.createElement('canvas');
 
-        // https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
-        const canvasContext = canvas.getContext('2d', { willReadFrequently: true });
+            // https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
+            const canvasContext = canvas.getContext('2d', { willReadFrequently: true });
 
-        return { video, canvas, canvasContext };
+            return { video, canvas, canvasContext };
+        } catch(error) {
+            console.error('Could not access camera. Please allow camera access.');
+            return { video: null, canvas: null, canvasContext: null };
+        }
     }
 
+    /**
+     * Analyzes the current video frame and updates the variable `value` to the average brightness of the frame.
+     * Calls itself recursively after a delay to continuously analyze the video frames.
+     */
+    const analyzeFrame = () => {
+        if (!video || !canvas || !canvasContext) {
+            return;
+        }
+
+        canvasContext!.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = canvasContext!.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        let brightness = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            // 3 * 255 is here to normalize brightness values (RGB 255) between 0 and 1
+            brightness += (data[i] + data[i + 1] + data[i + 2]) / (3 * 255);
+        }
+        brightness /= (data.length / 4);
+
+        // for testing purposes - adjusting brightness value to my room lighting
+        brightness = brightness * 2;
+
+        value = Number(brightness.toFixed(2));
+
+        // throttle
+        setTimeout(() => {
+            requestAnimationFrame(analyzeFrame);
+        }, 300);
+    };
+
     onMount(async () => {
-        if (!useCamera) {
+        if (!useCamera || hasAcceptedCameraUse) {
             return;
         }
-
-        let video: CameraData['video'];
-        let canvas: CameraData['canvas'];
-        let canvasContext: CameraData['canvasContext'];
-
-        try {
-            ({ video, canvas, canvasContext } = await prepareCameraData());
-        } catch (error) {
-            alert('Could not access camera. Please allow camera access and reload the page.');
-            return;
-        }
-
-        /**
-         * Analyzes the current video frame and updates the variable `value` to the average brightness of the frame.
-         * Calls itself recursively after a delay to continuously analyze the video frames.
-         */
-        const analyzeFrame = () => {
-            canvasContext!.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = canvasContext!.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-
-            let brightness = 0;
-            for (let i = 0; i < data.length; i += 4) {
-                // 3 * 255 is here to normalize brightness values (RGB 255) between 0 and 1
-                brightness += (data[i] + data[i + 1] + data[i + 2]) / (3 * 255);
-            }
-            brightness /= (data.length / 4);
-
-            // for testing purposes - adjusting brightness value to my room lighting
-            brightness = brightness * 2;
-
-            value = Number(brightness.toFixed(2));
-
-            // throttle
-            setTimeout(() => {
-                requestAnimationFrame(analyzeFrame);
-            }, 300);
-
-        };
-
-        analyzeFrame();
     });
 
     /**
      * Given an input value, this function calculates active segment number in the meter
      *
-     * @param {number} brightness - brightness value
+     * @param {number} value - brightness value
      * @param {number} [numSegments=7] - total number of segments (default is 7)
      * @return {number} active segment number
      */
@@ -116,6 +139,16 @@
         return activeSegment;
     }
 </script>
+
+{#if !hasAcceptedCameraUse && useCamera}
+    <div class="camera-prompt-container">
+        <p>We need access to your camera to proceed.</p>
+        <p>Please poke the eye below ;)</p>
+        <button class="camera-btn" on:click={acceptCameraUse}>
+             <svelte:component size="35" this={EyeIcon} />
+        </button>
+    </div>
+{/if}
 
 <div class="meter-container">
     <span class="icon moon {value >= optimum ? 'dimmed' : ''}">
@@ -136,6 +169,43 @@
 </div>
 
 <style lang="scss">
+    .camera-prompt-container {
+        position: absolute;
+        top: 4rem;
+        left: auto;
+        display: flex;
+        flex-direction: column;
+        justify-items: center;
+        align-items: center;
+        color: white;
+        text-align: center;
+        line-height: 2rem;
+        letter-spacing: 1px;
+        gap: 0.25rem;
+
+        .camera-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 4rem;
+            height: 4rem;
+            padding: 0.5rem;
+            border: 0;
+            border-radius: 15px;
+            background: #333333;
+            box-shadow:  6px 6px 13px #2a2a2a,
+            -6px -6px 13px #3c3c3c;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            margin-top: 0.5rem;
+
+            &:hover {
+                color: darkorange;
+            }
+        }
+    }
+
     .meter-container {
         width: 100%;
         max-width: 14.875rem;
